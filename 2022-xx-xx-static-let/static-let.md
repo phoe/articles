@@ -119,14 +119,12 @@ We need to be able to pass two bits of information along with the condition. One
 
 We use two slots instead of overloading just a single slot in order to follow [Pitman's Two-Bit Rule](http://www.nhplace.com/kent/PS/EQUAL.html):
 
-```
-     ``If you have two bits of information to represent,
-        use two bits to represent it.
-      Neither coincidence nor convenience 
-        justifies overloading a single bit.''
-
-                -- Pitman's Two-Bit Rule
-``` 
+>     ``If you have two bits of information to represent,
+>        use two bits to represent it.
+>      Neither coincidence nor convenience 
+>        justifies overloading a single bit.''
+>
+>                -- Pitman's Two-Bit Rule
 
 We need a report for that condition, and a report for the `CONTINUE` restart that will need to be established around it. Let's start with a useful helper that we'll use in both of them.
 
