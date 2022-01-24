@@ -126,7 +126,7 @@ We use two slots instead of overloading just a single slot in order to follow [P
 >
 >                -- Pitman's Two-Bit Rule
 
-We need a report for that condition, and a report for the `CONTINUE` restart that will need to be established around it. Let's start with a useful helper that we'll use in both of them.
+We need a report for our condition, and a report for the `CONTINUE` restart that will need to be established around it. Let's start with a useful helper function that we'll use in both of them.
 
 ```lisp
 (defun report-static-binding-flush-error-substring (condition)
@@ -135,7 +135,7 @@ We need a report for that condition, and a report for the `CONTINUE` restart tha
           (static-binding-flush-error-group condition)))
 ```
 
-The strings "static bindings from group ~S" and "ALL static bindings" will be useful both in the error report and the report for the `CONTINUE` restart that we will want to establish, hence this function was factored out to avoid code duplication.
+The strings `"static bindings from group ~S"` and `"ALL static bindings"` will be useful both in the error report and the report for the `CONTINUE` restart that we will want to establish. Hence, this function was factored out to avoid code duplication.
 
 ```lisp
 (defun report-static-binding-flush-error (condition stream)
@@ -150,6 +150,12 @@ The strings "static bindings from group ~S" and "ALL static bindings" will be us
             (static-binding-flush-error-all-groups-p condition))))
 ```
 
+Here's a proper condition report with an appropriately scary error message.
+
+The latter part about `:ARE-YOU-SURE-P T` is conditional, only to be shown if the programmer wants to flush a single group of bindings. That's because we only want to provide the keyword argument `ARE-YOU-SURE-P` in case of flushing a single group, which is something that the programmer can claim to be able to control - e.g. when they have made sure that all worker threads are stopped and will not access the bindings from that group.
+
+Doing the same to all groups is too dangerous and therefore we assume that the programmer will *never* be sure if it's OK to flush all the bindings.
+
 ```lisp
 (defun flush-bindings-cerror (&key group all-groups-p)
   (let* ((condition (make-condition 'static-binding-flush-error
@@ -159,6 +165,8 @@ The strings "static bindings from group ~S" and "ALL static bindings" will be us
                    (report-static-binding-flush-error-substring condition))))
     (cerror continue-string condition)))
 ```
+
+We finish off with a custom signaling function which piggybacks on top of `CL:CERROR` in order to establish a continuable error, supplying our custom restart report and an instance of `STATIC-BINDING-FLUSH-ERROR` to it.
 
 ## Flushing - variables
 
