@@ -69,6 +69,8 @@ We're all set package-wise, then; let's go!
 
 ## Static binding structure
 
+We'll implement each static binding as a structure with three slots: the value (obviously), a boolean stating whether a binding has been initialized, and an optional lock for bindings which should work in a multithreaded environment.
+
 ```lisp
 (defstruct (static-binding (:constructor %make-static-binding)
                            (:copier nil)
@@ -78,6 +80,8 @@ We're all set package-wise, then; let's go!
   (initializedp nil :type boolean)
   (lock nil :read-only t :type (or null bt:lock)))
 ```
+
+The original
 
 ```lisp
 (defun make-static-binding (&key once)
