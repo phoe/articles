@@ -26,12 +26,14 @@ But, that's the boring stuff. Come! Let us indulge in a little bit of literate p
 
 ## Package definition
 
+Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we do not need *anything* that is not a part of standard Common Lisp in order to make it work - which is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
+
 ```lisp
 (defpackage #:serapeum/static-let
   (:use #:cl)
 ```
 
-Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we do not need *anything* that is not a part of standard Common Lisp in order to make it work - which is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
+Still, it might be curious that we nonetheless import some symbols from Serapeum. In fact, these are symbols with the same names as the ones are supposed to define functionality for!
 
 ```lisp
   (:import-from #:serapeum
@@ -41,7 +43,7 @@ Let's start with the very basics. A good thing with implementing `STATIC-LET` is
                 #:flush-all-static-binding-groups)
 ```
 
-In particular, we only import these symbols from Serapeum because we will *implement* them - that is, define new macros, condition types, functions named with these symbols, and therefore bring functionality to these symbols which are exported from Serapeum but do not yet have any useful "attached" to them.
+This is because we only import these symbols from Serapeum because we will *implement* them - that is, define new macros, condition types, functions named with these symbols, and therefore bring functionality to these symbols which are exported from Serapeum but do not yet have any useful "attached" to them.
 
 ![implement.png](implement.png)
 
@@ -71,7 +73,7 @@ We're all set package-wise, then; let's go!
 
 The code from the original article uses a cons cell rather than a whole structure, and also does not recognize between an uninitialized binding and an initialized binding with the value of `NIL`. It also isn't safe against the situation of multiple threads attempting to initialize the binding at the same time.
 
-To fix that, we'll implement each static binding as a structure with three slots: the value (obviously), a boolean stating whether a binding has been initialized, and an optional lock for bindings which should work in a multithreaded environment. We don't need a copier or a predicate, and, since we're in our own package, we can ignore concatenation names for binding accessors.
+To fix that, we'll implement each static binding as a structure with three slots: the value (obviously), a boolean stating whether a binding has been initialized, and an optional lock for bindings which should work in a multithreaded environment. We don't need a copier or a predicate and, since we're in our own package, we can ignore prefixes for accessors.
 
 ```lisp
 (defstruct (static-binding (:constructor %make-static-binding)
@@ -83,7 +85,7 @@ To fix that, we'll implement each static binding as a structure with three slots
   (lock nil :read-only t :type (or null bt:lock)))
 ```
 
-A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-BINDING`: that is because we want to make the lock optional and later conditionalize our code based on whether the lock exists (and the lock should therefore be acquired before proceeding with modifying the binding).
+A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-BINDING`: that is because we want to make the lock optional (depending on the value of a constructor argument) and later conditionalize our code based on whether the lock exists (and the lock should therefore be acquired before proceeding with modifying the binding).
 
 ```lisp
 (defun make-static-binding (&key once)
@@ -93,12 +95,49 @@ A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-B
 
 ## Flush error
 
+The original article describes a particular trait of static bindings: their values are effectively inaccessible from the outside. The values become an integral part of the code which uses them, similarly to when one uses a closure. (In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!)
+
+This behavior is useful for e.g. static data which is meant for persist across deploying a Lisp application by saving the Lisp image and restoring it later, but it's unnecessary for e.g. any kind of caches that such static values might be used for: they will unnecessarily inflate the size of the binary and should instead be re-instantiated when the image is restored.
+
+This means that we need some way to be able to flush these bindings from the outside. And such an operation is dangerous, because it's essentially equivalent to being able to pull the rug from under a series of threads that may be currently standing on it.
+
+So, we need the ability to signal an error to raise the programmer's awareness about this danger, and to make the error continuable if the programmer decides that this is what they want.
+
+Let's get to work, then!
+
+```lisp
+(define-condition static-binding-flush-error (error)
+  ((group :initarg :group
+          :reader static-binding-flush-error-group)
+   (all-groups-p :initarg :all-groups-p
+                 :reader static-binding-flush-error-all-groups-p))
+  (:default-initargs :group nil :all-groups-p nil)
+  (:report report-static-binding-flush-error))
+```
+
+We need to be able to pass two bits of information along with the condition. One is the *group* that a binding is a part of (if the user wants to flush just a single group of bindings), the other is whether the user instead wants to flush bindings for *all* groups - including, possibly, the ones that they didn't define themself.
+
+We use two slots instead of overloading just a single slot in order to follow [Pitman's Two-Bit Rule](http://www.nhplace.com/kent/PS/EQUAL.html):
+
+```
+     ``If you have two bits of information to represent,
+        use two bits to represent it.
+      Neither coincidence nor convenience 
+        justifies overloading a single bit.''
+
+                -- Pitman's Two-Bit Rule
+``` 
+
+We need a report for that condition, and a report for the `CONTINUE` restart that will need to be established around it. Let's start with a useful helper that we'll use in both of them.
+
 ```lisp
 (defun report-static-binding-flush-error-substring (condition)
   (format nil "~:[static bindings from group ~S~;ALL static bindings~]"
           (static-binding-flush-error-all-groups-p condition)
           (static-binding-flush-error-group condition)))
 ```
+
+The strings "static bindings from group ~S" and "ALL static bindings" will be useful both in the error report and the report for the `CONTINUE` restart that we will want to establish, hence this function was factored out to avoid code duplication.
 
 ```lisp
 (defun report-static-binding-flush-error (condition stream)
@@ -111,16 +150,6 @@ A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-B
              Remove this error message with :ARE-YOU-SURE-P T.~;~]"
             substring
             (static-binding-flush-error-all-groups-p condition))))
-```
-
-```lisp
-(define-condition static-binding-flush-error (error)
-  ((group :initarg :group
-          :reader static-binding-flush-error-group)
-   (all-groups-p :initarg :all-groups-p
-                 :reader static-binding-flush-error-all-groups-p))
-  (:default-initargs :group nil :all-groups-p nil)
-  (:report report-static-binding-flush-error))
 ```
 
 ```lisp
