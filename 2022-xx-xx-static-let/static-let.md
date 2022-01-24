@@ -93,7 +93,7 @@ A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-B
    :lock (if once (bt:make-lock "Static binding lock") nil)))
 ```
 
-## Flush error
+## Flushing - errors
 
 The original article describes a particular trait of static bindings: their values are effectively inaccessible from the outside. The values become an integral part of the code which uses them, similarly to when one uses a closure. (In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!)
 
@@ -170,32 +170,83 @@ We finish off with a custom signaling function which piggybacks on top of `CL:CE
 
 ## Flushing - variables
 
-```lisp
-(defvar *flushing-lock* (bt:make-lock "Static binding flushing lock"))
+There will be two data structures associated with flushing bindings. First of all, we will need a mapping from binding groups to lists of binding structures that we will be able to "de-initialize"; second, we will want all accesses to that store to be thread-safe, so we will need a synchronization primitive of some sort.
 
+```lisp
 (defvar *flushable-bindings* (make-hash-table))
 ```
 
+An `EQL` hash-table will do for the data structure...
+
+```lisp
+(defvar *flushing-lock* (bt:make-lock "Static binding flushing lock"))
+```
+
+...and a Bordeaux Threads lock, for the synchronization primitive.
+
 ## Flushing - mechanisms
+
+Let's start with the flushing nitty-gritty, then. Let's make the initial assumption that multithreading is not a problem, and worry about synchronization later.
 
 ```lisp
 (defun %flush (group)
   (let ((count 0))
+```
+
+We will want to return the count of bindings which we have flushed So, here it is..
+
+```lisp
     (dolist (pointer (gethash group *flushable-bindings*))
+```
+
+Let's grab the list of all bindings associated with a given group and iterate on it.
+
+```lisp
       :start
+```
+
+`DOLIST` establishes an implicit `TAGBODY` which we can utilize to work around the fact that none of the standard Common Lisp iteration constructs have an analogue of the `continue` keyword known from Java or C++.
+
+Before anyone asks: tagbodies aren't scary, come on. That might be just my personal bias, but everyone uses tagbodies anyway - even if they use `DO`, `DOTIMES`, `DOLIST`, or `LOOP` to write them out for them.
+
+```lisp
       (let ((binding (tg:weak-pointer-value pointer)))
+```
+
+Oh, right! I forgot to mention. We do not actually push bindings themselves into the hash table; that would create strong references that would prevent old binding objects from being garbage-collected and therefore create a major memory leak if `%FLUSH` is never called.
+
+Instead, we push *weak pointers* which do not create strong references and therefore allow the pointees to be freely garbage-collected. We will use Trivial Garbage's weak pointer interface for that.
+
+```lisp
         (when (null binding)
           (go :start))
+```
+
+Here's our "continue" statement! If the weak pointer is broken (which is when its value is `NIL`), we go back and start processing the next element.
+
+```lisp
         (if (lock binding)
             (bt:with-lock-held ((lock binding))
               (setf (initializedp binding) nil
                     (value binding) nil))
             (setf (initializedp binding) nil
                   (value binding) nil))
+```
+
+Here we execute the actual "de-initialization", except conditionalized based on whether the binding has a lock or not. If yes, we acquire it for the duration of deinitialization; otherwise, there's nothing to acquire.
+
+```lisp
         (incf count)))
+```
+
+A keen eye will notice that we increase the count of flushed bindings only now. That is to avoid counting in bindings which have already been "implicitly" flushed by the garbage collector - that is, we do not count in broken weak pointers.
+
+```lisp
     (setf (gethash group *flushable-bindings*) '())
     count))
 ```
+
+The `DOLIST` is over, we're done. We can reset the list of bindings to flush (since all have just been flushed!) and return the count.
 
 ```lisp
 (defun flush-static-binding-group (group &key are-you-sure-p)
@@ -223,6 +274,7 @@ We finish off with a custom signaling function which piggybacks on top of `CL:CE
 ```lisp
 (pushnew 'flush-all-static-binding-groups uiop:*image-dump-hook*)
 ```
+
 ## Binding canonicalizer
 
 ```lisp
