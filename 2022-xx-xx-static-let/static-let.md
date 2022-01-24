@@ -69,7 +69,9 @@ We're all set package-wise, then; let's go!
 
 ## Static binding structure
 
-We'll implement each static binding as a structure with three slots: the value (obviously), a boolean stating whether a binding has been initialized, and an optional lock for bindings which should work in a multithreaded environment.
+The code from the original article uses a cons cell rather than a whole structure, and also does not recognize between an uninitialized binding and an initialized binding with the value of `NIL`. It also isn't safe against the situation of multiple threads attempting to initialize the binding at the same time.
+
+To fix that, we'll implement each static binding as a structure with three slots: the value (obviously), a boolean stating whether a binding has been initialized, and an optional lock for bindings which should work in a multithreaded environment. We don't need a copier or a predicate, and, since we're in our own package, we can ignore concatenation names for binding accessors.
 
 ```lisp
 (defstruct (static-binding (:constructor %make-static-binding)
@@ -81,7 +83,7 @@ We'll implement each static binding as a structure with three slots: the value (
   (lock nil :read-only t :type (or null bt:lock)))
 ```
 
-The original
+A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-BINDING`: that is because we want to make the lock optional and later conditionalize our code based on whether the lock exists (and the lock should therefore be acquired before proceeding with modifying the binding).
 
 ```lisp
 (defun make-static-binding (&key once)
