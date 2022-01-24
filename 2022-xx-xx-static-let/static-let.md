@@ -186,7 +186,7 @@ An `EQL` hash-table will do for the data structure...
 
 ## Flushing - mechanisms
 
-Let's start with the flushing nitty-gritty, then. Let's make the initial assumption that multithreading is not a problem, and worry about synchronization later.
+Let's start with the flushing nitty-gritty, then. Let's make the initial assumption that multithreading is not a problem and we are already sure that we want to flush the bindings. We will worry about synchronization and user interaction later.
 
 ```lisp
 (defun %flush (group)
@@ -207,7 +207,7 @@ Let's grab the list of all bindings associated with a given group and iterate on
 
 `DOLIST` establishes an implicit `TAGBODY` which we can utilize to work around the fact that none of the standard Common Lisp iteration constructs have an analogue of the `continue` keyword known from Java or C++.
 
-Before anyone asks: tagbodies aren't scary, come on. That might be just my personal bias, but everyone uses tagbodies anyway - even if they use `DO`, `DOTIMES`, `DOLIST`, or `LOOP` to write them out for them.
+* *Hot take, before anyone asks: come on, tagbodies aren't scary. That might be just my personal bias, but everyone uses tagbodies anyway - even if they use `DO`, `DOTIMES`, `DOLIST`, or `LOOP` to macroexpand into them on the programmer's behalf.*
 
 ```lisp
       (let ((binding (tg:weak-pointer-value pointer)))
@@ -246,7 +246,9 @@ A keen eye will notice that we increase the count of flushed bindings only now. 
     count))
 ```
 
-The `DOLIST` is over, we're done. We can reset the list of bindings to flush (since all have just been flushed!) and return the count.
+The `DOLIST` is over, we're done iterating. We can reset the list of bindings to flush (since all have just been flushed!) and return the count.
+
+That's all for our flushing nitty-gritty. Let's take a broader look and try to make it usable in the real-world.
 
 ```lisp
 (defun flush-static-binding-group (group &key are-you-sure-p)
