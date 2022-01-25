@@ -87,7 +87,7 @@ OK, it seems to work the same. But, what's really going on here?
 * We have bound a variable whose name is *not* `COUNTER` but some generated symbol;
 * We initialize that variable with a single cons cell whose `CAR` is `0`...
   * ...except that cons cell is defined to be a `LOAD-TIME-VALUE`,
-* We define `COUNTER` to be a *symbol macro* which expands into a reference to the `CAR` of the cons cell in question,
+* We define `COUNTER` to be a *symbol macro* which expands into a reference to the `CAR` of the value of the variable named by that generated symbol,
 * We increment `COUNTER` and return its new value.
 
 And that's all the magical ingredients!
@@ -650,7 +650,7 @@ If control reaches this place, then the binding has been successfully parsed...
 
 ### Binding accessors
 
-Now that we have our bindings structured, let's define some functions to access them and wrap them in an ugly and unhygienic macro.
+Now that we have our bindings structured, let's define some functions to access them and wrap them in a macro that makes them accessible.
 
 ```lisp
 (defmacro with-canonicalized-binding-accessors (() &body body)
@@ -665,7 +665,11 @@ Now that we have our bindings structured, let's define some functions to access 
      ,@body))
 ```
 
-We won't use most of these accessors in every function - hence they're all `IGNORABLE`.
+Beauty is in the eye of the beholder; some people will say it's nice, because we have all the functions bound for us in `BODY`, whereas others will scream in panic at the astounding lack of hygiene (they'll yell, "we *need* hygiene, it's not 2019 anymore! look at all the pandemics that your unhygienic macros have caused!").
+
+The thing is, lack of hygiene *is* the whole purpose of this macro; we can't satisfy everyone, unlike the type specifier `(SATISFIES CONSTANTLY)`. (Try it yourself!)
+
+One notable thing is that we won't use most of these accessors in every function - hence they're all `IGNORABLE`.
 
 ### Macro element generators
 
@@ -801,39 +805,33 @@ So, while silently weeping that we cannot use `REMOVE-DUPLICATES` here, we simpl
 
 ### Macro skeletons
 
-We are ready to construct the bodies of `STATIC-LET` and `STATIC-LET*`. Still, we have some code that will be common in both cases - in particular, we will need access to bindings, initforms, type declarations and so on. We can factor this code out into a separate macro that will bind the common variables for us.
-
-```lisp
-(defmacro with-parse-static-let-variables ((bindings-var body-var) &body body)
-  `(let* ((bindings (mapcar #'canonicalize-binding ,bindings-var))
-          (let-bindings (mapcar #'make-let-binding bindings))
-          (initforms (mapcar #'make-initform bindings))
-          (macrolet-bindings (mapcar #'make-macrolet-binding bindings))
-          (type-declarations (mapcar #'make-type-declaration bindings))
-          (active-groups-binding (make-active-groups-binding bindings)))
-     (multiple-value-bind (real-body declarations)
-         (parse-body ,body-var)
-       ,@body)))
-```
-
-Beauty is in the eye of the beholder; some people will say it's nice, because we have all the variables bound for us in `BODY`, whereas others will scream in panic at the astounding lack of hygiene that is the whole purpose of this macro.
-
-Oh well, we can't satisfy everyone, unlike the type specifier `(SATISFIES CONSTANTLY)`. (Try it yourself!)
+We are ready to construct the bodies of `STATIC-LET` and `STATIC-LET*`, starting with the former. We will need access to bindings, initforms, type declarations and so on. Since we will not depend on these bindings anywhere else (yes, that's a spoiler for `STATIC-LET*`!), we can just bind them here.
 
 ```lisp
 (defun parse-static-let (bindings body)
-  (with-parse-static-let-variables (bindings body)
-    `(let (,@let-bindings)
-       ,@initforms
-       (symbol-macrolet (,@macrolet-bindings)
-         (declare ,@type-declarations)
-         ,@declarations
-         (let ((*active-groups* ,active-groups-binding))
-           (declare (dynamic-extent *active-groups*))
-           ,@real-body)))))
+  (let* ((bindings (mapcar #'canonicalize-binding bindings))
+         (let-bindings (mapcar #'make-let-binding bindings))
+         (initforms (mapcar #'make-initform bindings))
+         (macrolet-bindings (mapcar #'make-macrolet-binding bindings))
+         (type-declarations (mapcar #'make-type-declaration bindings))
+         (active-groups-binding (make-active-groups-binding bindings)))
+    (multiple-value-bind (real-body declarations) (parse-body body)
 ```
 
-Most of the macro is a skeleton of what we'd like our code to look like.
+OK. That's a ton of variables. Thankfully, that is all of them - we can construct our `STATIC-LET` backquote template.
+
+```lisp
+      `(let (,@let-bindings)
+         ,@initforms
+         (symbol-macrolet (,@macrolet-bindings)
+           (declare ,@type-declarations)
+           ,@declarations
+           (let ((*active-groups* ,active-groups-binding))
+             (declare (dynamic-extent *active-groups*))
+             ,@real-body))))))
+```
+
+And after we bound all of our variables, that is a skeleton of what we'd like our code to look like.
 
 * We create an outermost `LET` which contains the initial bindings between gensyms and static binding structures,
 * We initialize all static bindings with our initforms,
