@@ -59,7 +59,70 @@ Where? The library of [Serapeum](https://github.com/ruricolist/serapeum/) accept
 
 But, that's the boring stuff. Come! Let us indulge in a little bit of literate programming and figure out how exactly that code works.
 
+## The idea
+
+Before we dive into the details, let's first describe the general idea that we're going to use. In particular, let's describe the operator `LOAD-TIME-VALUE` and how it is useful in our particular use case.
+
+And, since I don't want to keep you waiting, let's start with `TEST-FUNCTION` from above rewritten to use the same technique - just with less syntax sugar!
+
+```lisp
+CL-USER> (defun test-function ()
+           (let ((#1=#:static-binding (load-time-value (cons 0 nil))))
+             (symbol-macrolet ((counter (car #1#)))
+               (incf counter))))
+TEST-FUNCTION
+
+CL-USER> (test-function)
+1
+
+CL-USER> (test-function)
+2
+
+CL-USER> (test-function)
+3
+```
+
+OK, it seems to work the same. But, what's really going on here?
+
+* We have bound a variable whose name is *not* `COUNTER` but some generated symbol;
+* We initialize that variable with a single cons cell whose `CAR` is `0`...
+  * ...except that cons cell is defined to be a `LOAD-TIME-VALUE`,
+* We define `COUNTER` to be a *symbol macro* which expands into a reference to the `CAR` of the cons cell in question,
+* We increment `COUNTER` and return its new value.
+
+And that's all the magical ingredients!
+
+This approach is possible because of the magic of the special operator `LOAD-TIME-VALUE`. It's hard to explain its functioning in terms of other Common Lisp operators, which is also the reason why it is a special operator.
+
+This operator *delays* the evaluation of some form until load-time. Only after load-time happens that form is evaluated, and then the whole `LOAD-TIME-VALUE` form is magically substituted with a reference to the object returned in the evaluation.
+
+This way, once the piece of Lisp code in question is loaded, `LOAD-TIME-VALUE` disappears - and with it does the call to `CONS`. Instead, we get an already-created literal cons object, which is *additionally* free for us to modify - unlike e.g. a quoted cons literal like `'(0 . NIL)`. (This is because we did not supply the second argument to `LOAD-TIME-VALUE`, which creates constant data.)
+
+The load-time values become literally *spliced into* the code which uses them, they become an integral part of it - similarly to when one uses a closure. In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!
+
+```lisp
+CL-USER> (let ((counter 0))
+           (defun test-function ()
+             (incf counter)))
+TEST-FUNCTION
+
+CL-USER> (test-function)
+1
+
+CL-USER> (test-function)
+2
+
+CL-USER> (test-function)
+3
+```
+
+The main difference between the two is based on syntax: a load-time value does not require a variable binding around function definition, whereas a closure requires that; in addition, `LOAD-TIME-VALUE` does not constitute a place, which is why we need to allocate a cons cell whose `CAR` we can then access.
+
+In other words, it's *kinda possible* to think of a load-time value as an anonymous closure that is easily possible to use in a single place in code.
+
 ## Package definition
+
+Okay, enough ideating though! Let's start with actually making this thing a pleasure to use, and to take care of some additional functionalities that we'd like it to have. (And to shield us against misusing this tool.)
 
 Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one declaration-related utility from Serapeum (we'll use it at the very end to solve `STATIC-LET*`), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
 
@@ -144,9 +207,7 @@ A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-B
 
 ## Conditions
 
-The original article describes a particular trait of static bindings: their values are effectively inaccessible from the outside. The values become an integral part of the code which uses them, similarly to when one uses a closure. (In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!)
-
-This behavior is useful for e.g. static data which is meant for persist across deploying a Lisp application by saving the Lisp image and restoring it later, but it's unnecessary for e.g. any kind of caches that such static values might be used for: they will unnecessarily inflate the size of the binary and should instead be re-instantiated when the image is restored.
+The original article describes a particular trait of static bindings: their values are effectively inaccessible from the outside. This behavior is useful for e.g. static data which is meant for persist across deploying a Lisp application by saving the Lisp image and restoring it later, but it's unnecessary for e.g. any kind of caches that such static values might be used for: they will unnecessarily inflate the size of the binary and should instead be re-instantiated when the image is restored.
 
 This means that we need some way to be able to flush these bindings from the outside. And such an operation is dangerous, because it's essentially equivalent to being able to pull the rug from under a series of threads that may be currently standing on it.
 
