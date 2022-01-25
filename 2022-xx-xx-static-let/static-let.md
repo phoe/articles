@@ -26,7 +26,7 @@ But, that's the boring stuff. Come! Let us indulge in a little bit of literate p
 
 ## Package definition
 
-Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
+Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one declaration-related utility from Serapeum (we'll use it at the very end to solve `STATIC-LET*`), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
 
 ```lisp
 (defpackage #:serapeum/static-let
@@ -34,9 +34,12 @@ Let's start with the very basics. A good thing with implementing `STATIC-LET` is
   (:import-from #:alexandria
                 #:required-argument
                 #:once-only
+                #:ensure-car
                 #:deletef
                 #:parse-body
                 #:when-let)
+  (:import-from #:serapeum
+                #:partition-declarations)
 ```
 
 Still, it might be curious that we nonetheless import some other symbols from Serapeum. In fact, these are symbols with the same names as the ones are supposed to define functionality for!
@@ -743,35 +746,55 @@ Most of the macro is a skeleton of what we'd like our code to look like.
 
 (While we're at it, we use the fact that the value of `*ACTIVE-GROUPS*` never leaks outside, and we declaim it to be `DYNAMIC-EXTENT` to slightly reduce pressure on the garbage collector.)
 
-Well, that kinda makes sense. Let's take a look at `LET*` then!!
+Well, that kinda makes sense. Let's try implementing `STATIC-LET*`, then.
+
+The naïve way would be to do it in terms of a nested `STATIC-LET`, and this is the approach we will take. The only exception is that we need to be able to properly handle declarations and splice them into proper places inside our code - and this is exactly where Serapeum's `PARTITION-DECLARATIONS` will come in handy.
 
 ```lisp
-(defun parse-static-let* (bindings body)
-  (with-parse-static-let-variables (bindings body)
-    `(let (,@let-bindings)
-       (symbol-macrolet (,@macrolet-bindings)
-         (declare ,@type-declarations)
-         ,@declarations
-         ,@initforms
-         (let ((*active-groups* ,active-groups-binding))
-           (declare (dynamic-extent *active-groups*))
-           ,@real-body)))))
+(defun parse-static-let* (bindings body environment)
+  (case (length bindings)
 ```
 
-...pretty similar, truth be told. Find the differences!
+Let's start by checking how many bindings we have at all.
 
-* There is an outermost `LET` which consists the initial bindings between gensyms and static binding structures,
-* We establish symbol macros to be able to refer to values of our static bindings via the provided names,
-* We initialize all static bindings with our initforms,
-* We splice in the type declarations generated from `:TYPE` and the declarations provided in the body,
-* We rebind `*ACTIVE-GROUPS*`
-* We execute the provided body.
+```lisp
+    (0 `(locally ,@body))
+```
 
-The most concerning fact is, while `STATIC-LET` is implemented in terms of `LET`, `STATIC-LET*` is *not* implemented in terms of `LET*`. True top 10 anime betrayal style.
+No bindings, no problem - we expand into `LOCALLY` to support any user-provided declarations they might have.
 
-Truth is, we don't need to use `LET*` - we instead simply move the "name the symbol macros" step before "initialize the bindings".
+```lisp
+    (1 `(static-let ,bindings ,@body))
+```
 
-* *Kludge: This implementation has a known issue. In particular, inside an initform, a programmer is able to refer to __all__ bindings, not just the ones before it. We trust that the programmer will __not__ have a need to do that, especially since such a binding would be uninitialized and just give them a `NIL`, but that will become an issue when such an already-created-but-not-yet-initialized binding shadows a different one. Bugfixes welcome!*
+In case of one binding, `STATIC-LET*` is equivalent to `STATIC-LET` - and we use that fact here.
+
+```lisp
+    (t (multiple-value-bind (body declarations) (parse-body body)
+         (destructuring-bind (binding . other-bindings) bindings
+           (let ((binding-name (ensure-car binding)))
+             (multiple-value-bind (declarations other-declarations)
+                 (partition-declarations (list binding-name) declarations
+                                         environment)
+```
+
+...okay, there's a lot to unpack here. Let's take it slow.
+
+* First, we need to get a list of all declarations provided by the user - this is where ALEXANDRIA's `PARSE-BODY` comes in.;
+* Then, we separate the binding list into the first binding (which we will install into a `STATIC-LET` call) and other bindings (which we will forward to a recursive macro call);
+* Then, we call `ENSURE-CAR`, because the user might have provided the binding name as a symbol or as a list;
+* Then, we call `PARTITION-DECLARATIONS` with the symbol naming the binding, the list of all declarations, and the compilation environment;
+* Finally, we get a list of declarations that apply to this particular binding that we want to establish using `STATIC-LET`, and a list of other declarations that we can forward along with the other bindings to the recursive macro call.
+
+```lisp
+               `(static-let (,binding)
+                  ,@declarations
+                  (static-let* (,@other-bindings)
+                    ,@other-declarations
+                    ,@body)))))))))
+```
+
+A lot of variables going on, but hey, at least the macroexpansion looks somewhat readable. We expand into a `STATIC-LET` of one binding, apply some declarations, and then delegate everything else to a recursive `STATIC-LET*` call which should, eventually, run out of bindings and terminate recursion by expanding into a `STATIC-LET`.
 
 ### Okay, gimme the real stuff
 
@@ -781,14 +804,14 @@ Well, you know. The "real stuff", once we've done all of the above, is... unimpo
 (defmacro static-let ((&rest bindings) &body body)
   (parse-static-let bindings body))
 
-(defmacro static-let* ((&rest bindings) &body body)
-  (parse-static-let* bindings body))
+(defmacro static-let* ((&rest bindings) &body body &environment env)
+  (parse-static-let* bindings body env))
 ```
 
-Just a pair of macro lambda lists, and a pair of function calls. That's all. This article ends in a truly meek way; not with a bang, but a whimper.
+Just a pair of macro lambda lists, and a pair of function calls. That's all. The "real stuff" is, in fact, all of the above: that's the real implementation, this is just the API.
 
------------------
+This is how this article ends; not with a bang, but a whimper...
 
-Download the freshest version of Serapeum and enjoy your `STATIC-LET`!
+...and an advertisement! Download the freshest version of Serapeum and enjoy your `STATIC-LET` **TODAY**!
 
 *(Thanks for making it to the very end. If you like my writing, feel free to drop me a [line](mailto:phoe@disroot.org) or toss me a [coin](https://github.com/sponsors/phoe/).)*
