@@ -587,6 +587,8 @@ If control reaches this place, then the binding has been successfully parsed...
 
 ...so we can return it.
 
+### Binding accessors
+
 Now that we have our bindings structured, let's define some functions to access them and wrap them in an ugly and unhygienic macro.
 
 ```lisp
