@@ -850,4 +850,6 @@ This is how this article ends; not with a bang, but a whimper...
 
 ...and an advertisement! Download the freshest version of Serapeum and enjoy your `STATIC-LET` **TODAY**!
 
+-------------------
+
 *(Thanks for making it to the very end. If you like my writing, feel free to drop me a [line](mailto:phoe@disroot.org) or toss me a [coin](https://github.com/sponsors/phoe/).)*
