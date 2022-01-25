@@ -155,7 +155,7 @@ Still, it might be curious that we nonetheless import some other symbols from Se
                 #:static-let*)
 ```
 
-It turns out that we only import these symbols from Serapeum because we will *implement* them - that is, define new macros, condition types, functions named with these symbols, and therefore bring functionality to these symbols which are exported from Serapeum but do not yet have any useful "attached" to them.
+It turns out that we only import these symbols from Serapeum because we will *implement* them - that is, define new macros, condition types, functions named with these symbols, and therefore bring functionality to these symbols which are exported from Serapeum but do not yet have any useful stuff "attached" to them.
 
 ![implement.png](implement.png)
 
