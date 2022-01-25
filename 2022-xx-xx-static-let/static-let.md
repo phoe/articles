@@ -831,7 +831,7 @@ OK. That's a ton of variables. Thankfully, that is all of them - we can construc
              ,@real-body))))))
 ```
 
-And after we bound all of our variables, that is a skeleton of what we'd like our code to look like.
+And, making use of all of the variables we've bound, that is a skeleton of what we'd like our code to look like.
 
 * We create an outermost `LET` which contains the initial bindings between gensyms and static binding structures,
 * We initialize all static bindings with our initforms,
