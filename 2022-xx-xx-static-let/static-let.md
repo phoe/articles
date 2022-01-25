@@ -140,7 +140,7 @@ And start we shall, with the very basics. A good thing with implementing `STATIC
                 #:partition-declarations)
 ```
 
-Still, it might be curious that we nonetheless import some other symbols from Serapeum. In fact, these are symbols with the same names as the ones are supposed to define functionality for!
+Still, it might be curious that we nonetheless import some other symbols from Serapeum. In fact, these are symbols with the same names as the ones we are supposed to define functionality for!
 
 ```lisp
   (:import-from #:serapeum
