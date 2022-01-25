@@ -781,7 +781,7 @@ Most of the macro is a skeleton of what we'd like our code to look like.
 * We rebind `*ACTIVE-GROUPS*`,
 * We execute the provided body.
 
-(While we're at it, we use the fact that the value of `*ACTIVE-GROUPS*` never leaks outside, and we declaim it to be `DYNAMIC-EXTENT` to slightly reduce pressure on the garbage collector.)
+(While we're at it, we use the fact that the value of `*ACTIVE-GROUPS*` never leaks outside, and we declare it to be `DYNAMIC-EXTENT` to slightly reduce pressure on the garbage collector. It ain't much, but it's honest work.)
 
 Well, that kinda makes sense. Let's try implementing `STATIC-LET*`, then.
 
