@@ -67,7 +67,7 @@ And, since I don't want to keep you waiting, let's start with `TEST-FUNCTION` fr
 
 ```lisp
 CL-USER> (defun test-function ()
-           (let ((#1=#:static-binding (load-time-value (cons 0 nil))))
+           (let ((#1=#:foo (load-time-value (cons 0 nil))))
              (symbol-macrolet ((counter (car #1#)))
                (incf counter))))
 TEST-FUNCTION
