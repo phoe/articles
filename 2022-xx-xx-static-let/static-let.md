@@ -122,9 +122,9 @@ In other words, it's *kinda possible* to think of a load-time value as an anonym
 
 ## Package definition
 
-Okay, enough ideating though! Let's start with actually making this thing a pleasure to use, and to take care of some additional functionalities that we'd like it to have. (And to shield us against misusing this tool.)
+Okay, enough ideating! Let's start with actually making this thing a pleasure to use, and to take care of some additional functionalities that we'd like it to have. (And to shield us against misusing this tool.)
 
-Let's start with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one declaration-related utility from Serapeum (we'll use it at the very end to solve `STATIC-LET*`), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
+And start we shall, with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one declaration-related utility from Serapeum (we'll use it at the very end to solve `STATIC-LET*`), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
 
 ```lisp
 (defpackage #:serapeum/static-let
