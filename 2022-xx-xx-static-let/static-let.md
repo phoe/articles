@@ -94,7 +94,7 @@ And that's all the magical ingredients!
 
 This approach is possible because of the magic of the special operator `LOAD-TIME-VALUE`. It's hard to explain its functioning in terms of other Common Lisp operators, which is also the reason why it is a special operator.
 
-This operator *delays* the evaluation of some form until load-time. Only after load-time happens that form is evaluated, and then the whole `LOAD-TIME-VALUE` form is magically substituted with a reference to the object returned in the evaluation.
+This operator *delays* the evaluation of some form until load-time. Once load-time happens (not any earlier, not any later), that form is evaluated, and then the whole `LOAD-TIME-VALUE` form is magically substituted with a reference to the object returned in the evaluation.
 
 This way, once the piece of Lisp code in question is loaded, `LOAD-TIME-VALUE` disappears - and with it does the call to `CONS`. Instead, we get an already-created literal cons object, which is *additionally* free for us to modify - unlike e.g. a quoted cons literal like `'(0 . NIL)`. (This is because we did not supply the second argument to `LOAD-TIME-VALUE`, which creates constant data.)
 
