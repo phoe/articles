@@ -18,6 +18,41 @@ test_function(); // -> 2
 
 And then, oh, I remembered. There was [an article](http://jacek.zlydach.pl/blog/2020-01-11-static-variables-in-common-lisp.html) exploring the topic and showing a technique that had some pretty nice syntax.
 
+```lisp
+CL-USER> (defun test-function ()
+           (static-let ((counter 0))
+             (incf counter)))
+TEST-FUNCTION
+
+CL-USER> (test-function)
+1
+
+CL-USER> (test-function)
+2
+
+CL-USER> (test-function)
+3
+```
+
+Oh, and it should come in a `LET*` flavor too!
+
+```lisp
+CL-USER> (defun test-function-2 ()
+           (static-let* ((counter 0)
+                         (big-counter (+ counter 100)))
+             (list (incf counter) (incf big-counter))))
+TEST-FUNCTION-2
+
+CL-USER> (test-function-2)
+(1 101)
+
+CL-USER> (test-function-2)
+(2 102)
+
+CL-USER> (test-function-2)
+(3 103)
+```
+
 The only thing that was missing was a usable and somewhat tested implementation of that technique that I could link people to from the recipe. There wasn't one, though... So, d'oh, it needed to be written and uploaded somewhere.
 
 Where? The library of [Serapeum](https://github.com/ruricolist/serapeum/) accepted the idea and I was able to come up with an [implementation](https://github.com/ruricolist/serapeum/pull/108) that satisfied the maintainer.
@@ -751,7 +786,7 @@ Well, that kinda makes sense. Let's try implementing `STATIC-LET*`, then.
 The naïve way would be to do it in terms of a nested `STATIC-LET`, and this is the approach we will take. The only exception is that we need to be able to properly handle declarations and splice them into proper places inside our code - and this is exactly where Serapeum's `PARTITION-DECLARATIONS` will come in handy.
 
 ```lisp
-(defun parse-static-let* (bindings body environment)
+(defun parse-static-let* (bindings body env)
   (case (length bindings)
 ```
 
@@ -774,8 +809,7 @@ In case of one binding, `STATIC-LET*` is equivalent to `STATIC-LET` - and we use
          (destructuring-bind (binding . other-bindings) bindings
            (let ((binding-name (ensure-car binding)))
              (multiple-value-bind (declarations other-declarations)
-                 (partition-declarations (list binding-name) declarations
-                                         environment)
+                 (partition-declarations (list binding-name) declarations env)
 ```
 
 ...okay, there's a lot to unpack here. Let's take it slow.
