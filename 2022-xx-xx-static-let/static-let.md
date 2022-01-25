@@ -771,7 +771,7 @@ The most concerning fact is, while `STATIC-LET` is implemented in terms of `LET`
 
 Truth is, we don't need to use `LET*` - we instead simply move the "name the symbol macros" step before "initialize the bindings".
 
-* *Kludge: This implementation has a known issue. In particular, inside an initform, a programmer is able to refer to *all* bindings, not just the ones before it. We trust that the programmer will *not* have a need to do that, especially since such a binding would be uninitialized and just give them a `NIL`, but that will become an issue when such an already-created-but-not-yet-initialized binding shadows a different one. Bugfixes welcome!*
+* *Kludge: This implementation has a known issue. In particular, inside an initform, a programmer is able to refer to __all__ bindings, not just the ones before it. We trust that the programmer will __not__ have a need to do that, especially since such a binding would be uninitialized and just give them a `NIL`, but that will become an issue when such an already-created-but-not-yet-initialized binding shadows a different one. Bugfixes welcome!*
 
 ### Okay, gimme the real stuff
 
