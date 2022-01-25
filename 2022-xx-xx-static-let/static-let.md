@@ -875,7 +875,7 @@ In case of one binding, `STATIC-LET*` is equivalent to `STATIC-LET` - and we use
 
 ...okay, there's a lot to unpack here. Let's take it slow.
 
-* First, we need to get a list of all declarations provided by the user - this is where ALEXANDRIA's `PARSE-BODY` comes in.;
+* First, we need to get a list of all declarations provided by the user - this is where Alexandria's `PARSE-BODY` comes in.;
 * Then, we separate the binding list into the first binding (which we will install into a `STATIC-LET` call) and other bindings (which we will forward to a recursive macro call);
 * Then, we call `ENSURE-CAR`, because the user might have provided the binding name as a symbol or as a list;
 * Then, we call `PARTITION-DECLARATIONS` with the symbol naming the binding, the list of all declarations, and the compilation environment;
