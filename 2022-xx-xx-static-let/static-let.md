@@ -774,11 +774,11 @@ Oh well, we can't satisfy everyone, unlike the type specifier `(SATISFIES CONSTA
 
 Most of the macro is a skeleton of what we'd like our code to look like.
 
-* There is an outermost `LET` which consists the initial bindings between gensyms and static binding structures,
+* We create an outermost `LET` which contains the initial bindings between gensyms and static binding structures,
 * We initialize all static bindings with our initforms,
 * We establish symbol macros to be able to refer to values of our static bindings via the provided names,
 * We splice in the type declarations generated from `:TYPE` and the declarations provided in the body,
-* We rebind `*ACTIVE-GROUPS*`
+* We rebind `*ACTIVE-GROUPS*`,
 * We execute the provided body.
 
 (While we're at it, we use the fact that the value of `*ACTIVE-GROUPS*` never leaks outside, and we declaim it to be `DYNAMIC-EXTENT` to slightly reduce pressure on the garbage collector.)
