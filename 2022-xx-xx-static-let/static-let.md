@@ -55,7 +55,7 @@ CL-USER> (test-function-2)
 
 The only thing that was missing was a usable and somewhat tested implementation of that technique that I could link people to from the recipe. There wasn't one, though... So, d'oh, it needed to be written and uploaded somewhere.
 
-Where? The library of [Serapeum](https://github.com/ruricolist/serapeum/) accepted the idea and I was able to come up with an [implementation](https://github.com/ruricolist/serapeum/pull/108) that satisfied the maintainer.
+Where? The library of [Serapeum](https://github.com/ruricolist/serapeum/) accepted the idea and I was able to come up with an [implementation](https://github.com/ruricolist/serapeum/pull/108). It satisfied the maintainer who also provided a few fixes, all of which are implemented in the article.
 
 But, that's the boring stuff. Come! Let us indulge in a little bit of literate programming and figure out how exactly that code works.
 
@@ -124,7 +124,7 @@ In other words, it's *kinda possible* to think of a load-time value as an anonym
 
 Okay, enough ideating! Let's start with actually making this thing a pleasure to use, and to take care of some additional functionalities that we'd like it to have. (And to shield us against misusing this tool.)
 
-And start we shall, with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one declaration-related utility from Serapeum (we'll use it at the very end to solve `STATIC-LET*`), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
+And start we shall, with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one general utility and one declaration-related tool from Serapeum (we'll use this one at the very end to solve declaration issues), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
 
 ```lisp
 (defpackage #:serapeum/static-let
@@ -135,9 +135,11 @@ And start we shall, with the very basics. A good thing with implementing `STATIC
                 #:ensure-car
                 #:deletef
                 #:parse-body
-                #:when-let)
+                #:when-let
+                #:mappens)
   (:import-from #:serapeum
-                #:partition-declarations)
+                #:partition-declarations
+                #:keep)
 ```
 
 Still, it might be curious that we nonetheless import some other symbols from Serapeum. In fact, these are symbols with the same names as the ones we are supposed to define functionality for!
@@ -198,6 +200,18 @@ To fix that, we'll implement each static binding as a structure with three slots
 ```
 
 A keen eye will notice that we've defined a private constructor, `%MAKE-STATIC-BINDING`: that is because we want to make the lock optional (depending on the value of a constructor argument) and later conditionalize our code based on whether the lock exists (and the lock should therefore be acquired before proceeding with modifying the binding).
+
+```lisp
+(defmacro value-ref (static-binding)
+  `(value ,static-binding))
+
+(define-setf-expander value-ref (name)
+  (error "Cannot mutate a ~S binding: ~S" 'static-let name))
+```
+
+This code is here to make the static bindings themselves immutable to guard against the interaction between `STATIC-LET` and other macros. In particular, it's possible for one person to write a macro that creates a static binding and for another person to not understand how the binding is different from a regular binding.
+
+*(It's a thing I'm not fully satisfied with, but then again, it's not a big problem in practice. [Here](https://github.com/ruricolist/serapeum/issues/112) is a GitHub issue related to this.)*
 
 ```lisp
 (defun make-static-binding (&key once)
@@ -580,10 +594,10 @@ Let's state that a canonicalized binding shall be a list of seven elements:
         (gensym (gensym "STATIC-BINDING"))
         (once nil)
         (flush t)
-        (in '*package*))
+        (in *package*))
 ```
 
-And here is where these seven values are given some defaults (sans the name, which must always be provided). In particular, we'll use `*PACKAGE*` as the default value of the binding group; after evaluation, this group will become the current package.
+And here is where these seven values are given some defaults (sans the name, which must always be provided). In particular, we'll use the macroexpansion-time value of `*PACKAGE*` as the default value of the binding group.
 
 ```lisp
     (etypecase binding
@@ -773,10 +787,10 @@ And here's the part where we pretend that the symbol we provided to `STATIC-LET`
 ```lisp
 (defun make-macrolet-binding (x)
   (with-canonicalized-binding-accessors ()
-    `(,(name x) (value ,(sym x)))))
+    `(,(name x) (value-ref ,(sym x)))))
 ```
 
-Boring stuff: we want an example symbol `x` to act like `(value #:static-binding123)`.
+*Almost* boring stuff: we want an example symbol `x` to act like `(value #:static-binding123)`. The "almost" is because we use `VALUE-REF` instead of `VALUE` in order to make the binding itself impossible to `SETF`.
 
 ```lisp
 (defun make-type-declaration (x)
@@ -803,6 +817,42 @@ In particular, it's possible that we can encounter multiple bindings with `:IN (
 
 So, while silently weeping that we cannot use `REMOVE-DUPLICATES` here, we simply append a new form to `*ACTIVE-GROUPS*` for each binding we have.
 
+#### Dynamic-extent prevention
+
+It makes no sense for a static binding, which is of indefinite extent, to be proclaimed `DYNAMIC-EXTENT`. Hence, we need a way to detect these declarations and signal an error at macroexpansion time.
+
+We will write a function that accepts a series of binding names and a list of all declarations.
+
+```lisp
+(defun check-no-dynamic-extent (names declarations)
+  (let* ((relevant-declarations (partition-declarations names declarations))
+```
+
+First and foremost, we need to weed out the declarations which do not apply to any of the static binding names. We can use Serapeum's `PARTITION-DECLARATIONS` for that.
+
+```lisp
+         (dynamics
+           (mappend #'cdr
+                    (keep 'dynamic-extent
+                          (mappend #'cdr relevant-declarations)
+                          :key #'car))))
+```
+
+All declarations output by `PARTITION-DECLARATIONS` are split into separate Lisp lists of form `(DECLARE (...))`. The inner `MAPPEND #'CDR` gets rid of all the `DECLARE` symbols, the `KEEP` retains only the lists whose `CAR` is the symbol `DYNAMIC-EXTENT`, and the outer `MAPPEND #'CDR` strips away the `DYNAMIC-EXTENT` symbols as well.
+
+What we're left with is a list of names which were declared to be dynamic extent.
+
+(The terse double `MAPPEND` isn't really my style of writing Lisp - I'd have defined an additional temporary variable for the intermediate result. you can see this function was by ruricolist. :D)
+
+```lisp
+    (when-let (intersection (intersection names dynamics))
+      (error "~S bindings cannot be declared dynamic-extent: ~S"
+             'static-let
+             intersection))))
+```
+
+The call to `INTERSECTION` checks if any of the names declared to be dynamic extent are also names that refer to static bindings. If that is the case - we should signal an error.
+
 ### Macro skeletons
 
 We are ready to construct the bodies of `STATIC-LET` and `STATIC-LET*`, starting with the former. We will need access to bindings, initforms, type declarations and so on. Since we will not depend on these bindings anywhere else (yes, that's a spoiler for `STATIC-LET*`!), we can just bind them here.
@@ -818,7 +868,13 @@ We are ready to construct the bodies of `STATIC-LET` and `STATIC-LET*`, starting
     (multiple-value-bind (real-body declarations) (parse-body body)
 ```
 
-OK. That's a ton of variables. Thankfully, that is all of them - we can construct our `STATIC-LET` backquote template.
+OK. That's a ton of variables. Thankfully, that is all of them - we can construct our `STATIC-LET` backquote template...
+
+```lisp
+      (check-no-dynamic-extent (mapcar #'car macrolet-bindings) declarations)
+```
+
+...after executing our check for binding names with dynamic extent.
 
 ```lisp
       `(let (,@let-bindings)
@@ -844,7 +900,7 @@ And, making use of all of the variables we've bound, that is a skeleton of what 
 
 Well, that kinda makes sense. Let's try implementing `STATIC-LET*`, then.
 
-The naïve way would be to do it in terms of a nested `STATIC-LET`, and this is the approach we will take. The only exception is that we need to be able to properly handle declarations and splice them into proper places inside our code - and this is exactly where Serapeum's `PARTITION-DECLARATIONS` will come in handy.
+The naïve way would be to do it in terms of a nested `STATIC-LET`, and this is the approach we will take. The only exception is that we need to be able to properly handle declarations and splice them into proper places inside our code - and this is exactly where Serapeum's `PARTITION-DECLARATIONS` will come in handy once more.
 
 ```lisp
 (defun parse-static-let* (bindings body env)
@@ -867,6 +923,7 @@ In case of one binding, `STATIC-LET*` is equivalent to `STATIC-LET` - and we use
 
 ```lisp
     (t (multiple-value-bind (body declarations) (parse-body body)
+         (check-no-dynamic-extent (mapcar #'car bindings) declarations)
          (destructuring-bind (binding . other-bindings) bindings
            (let ((binding-name (ensure-car binding)))
              (multiple-value-bind (declarations other-declarations)
@@ -876,6 +933,7 @@ In case of one binding, `STATIC-LET*` is equivalent to `STATIC-LET` - and we use
 ...okay, there's a lot to unpack here. Let's take it slow.
 
 * First, we need to get a list of all declarations provided by the user - this is where Alexandria's `PARSE-BODY` comes in.;
+* Then, since we have the list of all declarations, we can check for any `DYNAMIC-EXTENT` declarations that apply to static bindings.
 * Then, we separate the binding list into the first binding (which we will install into a `STATIC-LET` call) and other bindings (which we will forward to a recursive macro call);
 * Then, we call `ENSURE-CAR`, because the user might have provided the binding name as a symbol or as a list;
 * Then, we call `PARTITION-DECLARATIONS` with the symbol naming the binding, the list of all declarations, and the compilation environment;
@@ -908,6 +966,8 @@ Just a pair of macro lambda lists, and a pair of function calls. That's all. The
 This is how this article ends; not with a bang, but a whimper...
 
 ...and an advertisement! Download the freshest version of Serapeum and enjoy your `STATIC-LET` **TODAY**!
+
+Huge thanks to [Paul M. Rodriguez](https://github.com/ruricolist/) for reviewing, merging, and contributing to the library.
 
 -------------------
 
