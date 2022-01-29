@@ -67,8 +67,8 @@ And, since I don't want to keep you waiting, let's start with `TEST-FUNCTION` fr
 
 ```lisp
 CL-USER> (defun test-function ()
-           (let ((#1=#:foo (load-time-value (cons 0 nil))))
-             (symbol-macrolet ((counter (car #1#)))
+           (let ((counter-var (load-time-value (cons 0 nil))))
+             (symbol-macrolet ((counter (car counter-var)))
                (incf counter))))
 TEST-FUNCTION
 
@@ -84,10 +84,10 @@ CL-USER> (test-function)
 
 OK, it seems to work the same. But, what's really going on here?
 
-* We have bound a variable whose name is *not* `COUNTER` but some generated symbol;
+* We have bound a variable whose name is *not* `COUNTER` but some other symbol;
 * We initialize that variable with a single cons cell whose `CAR` is `0`...
   * ...except that cons cell is defined to be a `LOAD-TIME-VALUE`,
-* We define `COUNTER` to be a *symbol macro* which expands into a reference to the `CAR` of the value of the variable named by that generated symbol,
+* We define `COUNTER` to be a *symbol macro* which expands into a reference to the `CAR` of the value of the variable named by that other symbol,
 * We increment `COUNTER` and return its new value.
 
 And that's all the magical ingredients!
@@ -96,7 +96,7 @@ This approach is possible because of the magic of the special operator `LOAD-TIM
 
 This operator *delays* the evaluation of some form until load-time. Once load-time happens (not any earlier, not any later), that form is evaluated, and then the whole `LOAD-TIME-VALUE` form is magically substituted with a reference to the object returned in the evaluation.
 
-This way, once the piece of Lisp code in question is loaded, `LOAD-TIME-VALUE` disappears - and with it does the call to `CONS`. Instead, we get an already-created literal cons object, which is *additionally* free for us to modify - unlike e.g. a quoted cons literal like `'(0 . NIL)`. (This is because we did not supply the second argument to `LOAD-TIME-VALUE`, which creates constant data.)
+This way, once the piece of Lisp code in question is loaded, `LOAD-TIME-VALUE` disappears - and with it does the call to `CONS`. Instead, we get an already-created literal cons object, which is *additionally* free for us to modify - unlike e.g. a quoted cons literal like `'(0 . NIL)`. (This is because we did not supply the second argument to `LOAD-TIME-VALUE`, which allows us to create constant data.)
 
 The load-time values become literally *spliced into* the code which uses them, they become an integral part of it - similarly to when one uses a closure. In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!
 
