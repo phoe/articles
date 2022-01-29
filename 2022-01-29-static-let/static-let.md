@@ -10,7 +10,6 @@ int test_function() {
   return counter++;
 }
 
-//test:
 test_function(); // -> 0
 test_function(); // -> 1
 test_function(); // -> 2
@@ -19,38 +18,26 @@ test_function(); // -> 2
 And then, oh, I remembered. There was [an article](http://jacek.zlydach.pl/blog/2020-01-11-static-variables-in-common-lisp.html) exploring the topic and showing a technique that had some pretty nice syntax.
 
 ```lisp
-CL-USER> (defun test-function ()
-           (static-let ((counter 0))
-             (incf counter)))
-TEST-FUNCTION
+(defun test-function ()
+  (static-let ((counter 0))
+    (incf counter)))
 
-CL-USER> (test-function)
-1
-
-CL-USER> (test-function)
-2
-
-CL-USER> (test-function)
-3
+(test-function) ; -> 1
+(test-function) ; -> 2
+(test-function) ; -> 3
 ```
 
 Oh, and it should come in a `LET*` flavor too!
 
 ```lisp
-CL-USER> (defun test-function-2 ()
-           (static-let* ((counter 0)
-                         (big-counter (+ counter 100)))
-             (list (incf counter) (incf big-counter))))
-TEST-FUNCTION-2
+(defun test-function-2 ()
+  (static-let* ((counter 0)
+                (big-counter (+ counter 100)))
+    (list (incf counter) (incf big-counter))))
 
-CL-USER> (test-function-2)
-(1 101)
-
-CL-USER> (test-function-2)
-(2 102)
-
-CL-USER> (test-function-2)
-(3 103)
+(test-function-2) ; -> (1 101)
+(test-function-2) ; -> (2 102)
+(test-function-2) ; -> (3 103)
 ```
 
 The only thing that was missing was a usable and somewhat tested implementation of that technique that I could link people to from the recipe. There wasn't one, though... So, d'oh, it needed to be written and uploaded somewhere.
@@ -66,20 +53,14 @@ Before we dive into the details, let's first describe the general idea that we'r
 And, since I don't want to keep you waiting, let's start with `TEST-FUNCTION` from above rewritten to use the same technique - just with less syntax sugar!
 
 ```lisp
-CL-USER> (defun test-function ()
-           (let ((counter-var (load-time-value (cons 0 nil))))
-             (symbol-macrolet ((counter (car counter-var)))
-               (incf counter))))
-TEST-FUNCTION
+(defun test-function ()
+  (let ((counter-var (load-time-value (cons 0 nil))))
+    (symbol-macrolet ((counter (car counter-var)))
+      (incf counter))))
 
-CL-USER> (test-function)
-1
-
-CL-USER> (test-function)
-2
-
-CL-USER> (test-function)
-3
+(test-function) ; -> 1
+(test-function) ; -> 2
+(test-function) ; -> 3
 ```
 
 OK, it seems to work the same. But, what's really going on here?
@@ -101,19 +82,13 @@ This way, once the piece of Lisp code in question is loaded, `LOAD-TIME-VALUE` d
 The load-time values become literally *spliced into* the code which uses them, they become an integral part of it - similarly to when one uses a closure. In fact, using closures is one of the alternative approaches of implementing a static binding described in the original article!
 
 ```lisp
-CL-USER> (let ((counter 0))
-           (defun test-function ()
-             (incf counter)))
-TEST-FUNCTION
+(let ((counter 0))
+  (defun test-function ()
+    (incf counter)))
 
-CL-USER> (test-function)
-1
-
-CL-USER> (test-function)
-2
-
-CL-USER> (test-function)
-3
+(test-function) ; -> 1
+(test-function) ; -> 2
+(test-function) ; -> 3
 ```
 
 The main difference between the two is based on syntax: a load-time value does not require a variable binding around function definition, whereas a closure requires that; in addition, `LOAD-TIME-VALUE` does not constitute a place, which is why we need to allocate a cons cell whose `CAR` we can then access.
