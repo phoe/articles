@@ -90,11 +90,30 @@ So, it's time to update the `STATIC-LET` article I wrote [yesterday](https://git
 But alas! It's also possible to use this behavior to *check* if a piece of code has been minimally compiled. The following example signals an error *only* on the latter four implementations and *only* in code that has not been compiled.
 
 ```lisp
-;;; I used the stones to destroy the stones
-(flet ((fn () (let ((x (load-time-value (list 0)))) (incf (car x)))))
-  (declare (notinline fn))
-  (when (= (fn) (fn))
-    (error "This will not work in uncompiled code.")))
+;; I used the stones to destroy the stones
+;; CLISP 2.49.93+
+
+[1]> (defun foo ()
+       (flet ((fn () (let ((x (load-time-value (list 0)))) (incf (car x)))))
+         (declare (notinline fn))
+         (when (= (fn) (fn))
+           (error "STATIC-LET will not work in uncompiled code."))))
+FOO
+
+[2]> (foo)
+*** - STATIC-LET will not work in uncompiled code.
+The following restarts are available:
+ABORT          :R1      Abort main loop
+
+Break 1 [3]> :r1
+
+[4]> (compile 'foo)
+FOO ;
+NIL ;
+NIL
+
+[5]> (foo)
+NIL
 ```
 
 On non-compiler-only implementations, it's possible to splice such a piece of code into a macroexpansion in order to have a check which will signal an error (or possibly do something else) on code which was not minimally compiled.
