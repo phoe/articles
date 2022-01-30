@@ -136,7 +136,7 @@ The explanation is that `TOTALLY-RANDOM` was a symbol that was useful (and used)
 
 And all is fine and well, until you go into your REPL and see *this*:
 
-![image1](image1.png)
+![image-1](image-1.png)
 
 The syntax completion is suggesting the *old* symbol even though it no longer bears any meaning. It means that you, as the programmer, need to hit the `↓` key to navigate downwards and select the proper symbol, which can annoy you to no avail. That's a pet peeve.
 
@@ -155,7 +155,7 @@ And that's the concrete edge case solved by `:UNINTERN`!
 
 Using this fixes the syntax completion:
 
-![image2](image2.png)
+![image-2](image-2.png)
 
 In particular, evaluating this `DEFINE-PACKAGE` form will either be a no-op (if the symbol doesn't exist, e.g. when defining the package from scratch) or automatically unintern the old symbol from the system (if it exists, e.g. when upgrading the package to a newer version).
 
