@@ -95,9 +95,23 @@ The main difference between the two is based on syntax: a load-time value does n
 
 In other words, it's *kinda possible* to think of a load-time value as an anonymous closure that is easily possible to use in a single place in code.
 
-## Package definition
+TODO add a bit more stuff here about flushing bindings et al
+
+## ~~Complicating~~ Completing the idea
 
 Okay, enough ideating! Let's start with actually making this thing a pleasure to use, and to take care of some additional functionalities that we'd like it to have. (And to shield us against misusing this tool.)
+
+* The first necessary addition to this facility is something that will let us remove the values of these bindings from outside. A `LOAD-TIME-VALUE` form is like a closure: it will be allocated and then stay in memory forever, which is not always what is needed (e.g. in case of caches that can be rebuilt when an application is deployed as a Lisp image).
+  * An addition to that addition is making some bindings explicitly *not* flushable, for when we want some piece of data to survive a Lisp freeze-thaw cycle.
+* It should be possible to prevent against the situation when there is a possibility of a "rug pull" - so, a value of a binding is flushed when that binding:
+  * is currently active on the call stack and can be accessed before being reinitialized by entering its scope,
+  * when other threads can possibly try to access it in the same way.
+* We'd also like to be able to specify type of the binding values for a little bit of efficiency.
+* Also, we need to guard ourselves against the possibility of multiple threads trying to initialize the binding at the same time in a race condition - so, it should be possible to synchronize accesses to the binding.
+
+That's a decent list of requirements. Let's make it happen, let's start.
+
+## Package definition
 
 And start we shall, with the very basics. A good thing with implementing `STATIC-LET` is that we barely need *anything* that is not a part of standard Common Lisp in order to make it work - just a few utilities from Alexandria, one general utility and one declaration-related tool from Serapeum (we'll use this one at the very end to solve declaration issues), plus multithreading primitives from Bordeaux Threads. That is both a testament to how good ANSI CL is and a relief when it comes to pedagogy (no external dependencies, no problem!).
 
@@ -142,7 +156,7 @@ This is an inverse of the "usual" package management style in which `SERAPEUM/ST
 
 Again, it's hard to say which of these styles is the "norm"; both of them have their uses and they're equivalent in theory even if they require different styles of arranging code.
 
-We could probably also do all of our work in package `SERAPEUM` as long as we sacrificed some brevity of our helper utilities' names, but eh, let's promote the one-package-per-file style wherever it's possible.
+We could probably also do all of our work in package `SERAPEUM` as long as we sacrificed some brevity of our helper utilities' names, but eh, let's promote the one-package-per-file style wherever it's possible *and* feasible.
 
 ```lisp
   #+sbcl (:implement #:serapeum))
