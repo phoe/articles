@@ -1,5 +1,10 @@
 # `STATIC-LET`, Or How I Learned To Stop Worrying And Love `LOAD-TIME-VALUE`
 
+## TODOs
+
+* `STATIC-LET` must be used **only in compiled code** - see [the follow-up post](https://github.com/phoe/articles/blob/main/2022-01-30-load-time-value/README.md).
+  * Wait for the [Serapeum issue](https://github.com/ruricolist/serapeum/issues/114) to get resolved and edit this post accordingly with ruricolist's solution.
+
 ## Introduction
 
 So I have been working on Common Lisp Recipes, on a recipe for using global static bindings via [global-vars](https://github.com/lmj/global-vars). I was wondering if there was anything for *local* bindings though, something like in C:
