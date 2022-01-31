@@ -1,6 +1,6 @@
 # `LOAD-TIME-VALUE`, or How I Started Worrying About `STATIC-LET` Again
 
-Usually you are not supposed to know whether a piece of Lisp code has been compiled or is being interpreted without compilation. In particular, compiling a Lisp program shouldn't change its semantics in any way, right?
+Usually you are not supposed to know whether a piece of Common Lisp code has been compiled or is being interpreted without compilation. It's possible to observe e.g. that macroexpanders are not called in code that has been already compiled, and variables like `*COMPILE-FILE-PATHNAME*` are bound when a file is being compiled - but, in particular, compiling a Common Lisp program shouldn't change its semantics in any way, right?
 
 See, there is one thing that *surely* is an exception to that rule. It is specified in a way that allows it to differ in terms of how it behaves between compiled and non-compiled code: `LOAD-TIME-VALUE`, which I recently used to implement `STATIC-LET`.
 
